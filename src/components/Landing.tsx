@@ -31,6 +31,7 @@ export default function Landing() {
   const [warpReady, setWarpReady] = useState(true); // warp overlay only mounts once ready
   const [leaving, setLeaving] = useState<View | null>(null); // world whose content is fading out
   const timers = useRef<number[]>([]);
+  const touchStart = useRef<number | null>(null); // vertical swipe detection
 
   const locked = trans !== null;
 
@@ -124,6 +125,21 @@ export default function Landing() {
     [locked, view, beginTransition]
   );
 
+  // ── Touch / swipe navigation (mobile) ────────────────────────────────
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStart.current = e.touches[0]?.clientY ?? null;
+  };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStart.current == null) return;
+    const dy = (e.changedTouches[0]?.clientY ?? touchStart.current) - touchStart.current;
+    touchStart.current = null;
+    if (locked) return;
+    if (Math.abs(dy) < 40) return; // ignore taps / small moves
+    const i = ORDER.indexOf(view);
+    if (dy < 0 && i < ORDER.length - 1) beginTransition(ORDER[i + 1]); // swipe up = next
+    else if (dy > 0 && i > 0) beginTransition(ORDER[i - 1]); // swipe down = previous
+  };
+
   useEffect(() => {
     window.addEventListener("wheel", handleWheel, { passive: true });
     return () => window.removeEventListener("wheel", handleWheel);
@@ -165,7 +181,11 @@ export default function Landing() {
   };
 
   return (
-    <main className="relative h-[100vh] w-full overflow-hidden bg-white">
+    <main
+      className="relative h-[100vh] w-full touch-none overflow-hidden bg-white"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       {/* ── views ───────────────────────────────────── */}
       <div className="absolute inset-0" style={layerStyle("hero")}>
         <Hero exiting={view === "hero" && trans === "warp"} />
