@@ -5,12 +5,13 @@ import Hero from "./Hero";
 import WarpPage from "./WarpPage";
 import World from "./World";
 import Socials from "./Socials";
+import RotateScene from "./RotateScene";
 import WarpField from "./WarpField";
 
 // Content views.
-type View = "hero" | "warp" | "world1" | "world2" | "socials";
+type View = "hero" | "warp" | "world1" | "rotate" | "world2" | "socials";
 
-const ORDER: View[] = ["hero", "warp", "world1", "world2", "socials"];
+const ORDER: View[] = ["hero", "warp", "world1", "rotate", "world2", "socials"];
 
 /**
  * Landing — the scroll-driven experience.
@@ -30,6 +31,7 @@ export default function Landing() {
   const [planetOut, setPlanetOut] = useState(false); // universo dives into its dot before warp
   const [warpReady, setWarpReady] = useState(true); // warp overlay only mounts once ready
   const [leaving, setLeaving] = useState<View | null>(null); // world whose content is fading out
+  const [rotProgress, setRotProgress] = useState(0); // progress (0..1) of the 3D rotate scene
   const timers = useRef<number[]>([]);
   const touchStart = useRef<number | null>(null); // vertical swipe detection
 
@@ -52,6 +54,16 @@ export default function Landing() {
 
   const beginTransition = useCallback(
     (to: View) => {
+      // Entering the 3D slide scene: no warp — we just switch view and let the
+      // user tilt it with scroll / swipe (the Apehands content slides away).
+      if (to === "rotate") {
+        setView(to);
+        setTrans(null);
+        setWarpFading(false);
+        setSoftTransition(false);
+        setRotProgress(0);
+        return;
+      }
       setTrans(to);
       setWarpFading(false);
       // Soft transitions (logo <-> universo) swap the view directly: the logo
@@ -78,8 +90,9 @@ export default function Landing() {
             setView(to); // hide the universo behind the opaque overlay
           }, 750)
         );
-      } else if (view === "socials") {
-        // Leaving the closing socials page back to a world: direct warp.
+      } else if (view === "socials" || view === "rotate") {
+        // Leaving the closing socials page (or the rotate scene) back to a
+        // world: direct warp.
         setWarpReady(true);
         setView(to);
       } else {
@@ -106,6 +119,7 @@ export default function Landing() {
     setWarpFading(true);
     setSoftTransition(false);
     setPlanetOut(false);
+    setRotProgress(0);
     timers.current.push(
       window.setTimeout(() => {
         setWarpFading(false);
@@ -115,14 +129,43 @@ export default function Landing() {
   }, [trans]);
 
   // ── Navigation ─────────────────────────────────────────────────────
+  // While on the 3D rotate scene, scroll/swipe/keyboard tilt the view instead
+  // of changing page. At the extremes (rotProgress 0 or 1) another gesture
+  // navigates back / forward.
+  const handleRotateNav = useCallback(
+    (dir: 1 | -1) => {
+      if (view !== "rotate") return false;
+      const i = ORDER.indexOf("rotate");
+      const next = (p: number) => Math.max(0, Math.min(2, p));
+      if (dir === 1) {
+        const np = next(rotProgress + 0.25);
+        setRotProgress(np);
+        // planet fully off to the left -> warp to Decentral Frens
+        if (np >= 2 && i < ORDER.length - 1) beginTransition(ORDER[i + 1]);
+      } else {
+        const np = next(rotProgress - 0.25);
+        setRotProgress(np);
+        // planet back off to the right (text re-centered) -> warp back to Apehands
+        if (np <= 0 && i > 0) beginTransition(ORDER[i - 1]);
+      }
+      return true;
+    },
+    [view, rotProgress, beginTransition]
+  );
+
   const handleWheel = useCallback(
     (e: WheelEvent) => {
       if (locked) return;
+      if (view === "rotate") {
+        if (e.deltaY > 20) handleRotateNav(1);
+        else if (e.deltaY < -20) handleRotateNav(-1);
+        return;
+      }
       const i = ORDER.indexOf(view);
       if (e.deltaY > 20 && i < ORDER.length - 1) beginTransition(ORDER[i + 1]);
       else if (e.deltaY < -20 && i > 0) beginTransition(ORDER[i - 1]);
     },
-    [locked, view, beginTransition]
+    [locked, view, handleRotateNav, beginTransition]
   );
 
   // ── Touch / swipe navigation (mobile) ────────────────────────────────
@@ -135,6 +178,10 @@ export default function Landing() {
     touchStart.current = null;
     if (locked) return;
     if (Math.abs(dy) < 40) return; // ignore taps / small moves
+    if (view === "rotate") {
+      handleRotateNav(dy < 0 ? 1 : -1);
+      return;
+    }
     const i = ORDER.indexOf(view);
     if (dy < 0 && i < ORDER.length - 1) beginTransition(ORDER[i + 1]); // swipe up = next
     else if (dy > 0 && i > 0) beginTransition(ORDER[i - 1]); // swipe down = previous
@@ -148,6 +195,16 @@ export default function Landing() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (locked) return;
+      if (view === "rotate") {
+        if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
+          e.preventDefault();
+          handleRotateNav(1);
+        } else if (e.key === "ArrowUp" || e.key === "PageUp") {
+          e.preventDefault();
+          handleRotateNav(-1);
+        }
+        return;
+      }
       const i = ORDER.indexOf(view);
       if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
         e.preventDefault();
@@ -159,12 +216,13 @@ export default function Landing() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [locked, view, beginTransition]);
+  }, [locked, view, handleRotateNav, beginTransition]);
 
   const active = {
     hero: view === "hero",
     warp: view === "warp",
-    world1: view === "world1",
+    world1: view === "world1" || view === "rotate",
+    rotate: view === "rotate",
     world2: view === "world2",
     socials: view === "socials",
   };
@@ -199,6 +257,7 @@ export default function Landing() {
           accent="#ff4d00"
           name="The Apehands"
           exiting={leaving === "world1"}
+          shift={Math.min(rotProgress, 1)}
           blurb={[
             "The Apehands is an animated kids' series about the Handerson family — Banjo, Kira, Mum and Dad — four hand-shaped characters who share playful, everyday adventures full of curiosity and fun.",
             "For this IP focused on the little ones at home, we've created related activities that will allow them to learn while playing Banjo and Kira.",
@@ -210,6 +269,9 @@ export default function Landing() {
             { label: "YouTube", href: "https://www.youtube.com/@TheApehands", icon: "youtube" },
           ]}
         />
+      </div>
+      <div className="absolute inset-0" style={layerStyle("rotate")}>
+        <RotateScene progress={rotProgress} />
       </div>
       <div className="absolute inset-0" style={layerStyle("world2")}>
         <World

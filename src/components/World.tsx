@@ -44,6 +44,7 @@ export default function World({
   blurb,
   socials = DEFAULT_SOCIALS,
   exiting = false,
+  shift = 0,
 }: {
   index: number; // for the numbering like 01, 02
   accent: string; // hex color used as accent
@@ -51,6 +52,7 @@ export default function World({
   blurb?: string[]; // optional custom description paragraphs
   socials?: Social[];
   exiting?: boolean; // fade the content out before the warp starts
+  shift?: number; // 0..1 slides the whole content to the left (3D reveal)
 }) {
   const [inView, setInView] = useState(false);
   const ref = useRef<HTMLElement>(null);
@@ -90,7 +92,13 @@ export default function World({
         className="relative z-10 mx-auto w-full max-w-5xl ease-out"
         style={{
           opacity: exiting ? 0 : inView ? 1 : 0,
-          transform: exiting ? "translateY(-40px)" : inView ? "translateY(0)" : "translateY(60px)",
+          transform:
+            (exiting
+              ? "translateY(-40px)"
+              : inView
+              ? "translateY(0)"
+              : "translateY(60px)") +
+            ` translateX(${(-shift * 60).toFixed(1)}%)`,
           transition: exiting
             ? "opacity 450ms ease, transform 450ms ease"
             : "opacity 1200ms ease, transform 1200ms ease-out",
